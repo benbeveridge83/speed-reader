@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDF Speed Reader</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    :root {
+      --bg: #101418;
+      --panel: #171d24;
+      --panel-2: #202833;
+      --text: #edf2f7;
+      --muted: #a9b4c0;
+      --accent: #71d6ff;
+      --danger: #ff7a7a;
+      --border: #2f3a48;
+      --paper: #f8f6ef;
+      --paper-text: #111827;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: grid;
+      grid-template-columns: 330px 1fr;
+    }
+
+    aside {
+      border-right: 1px solid var(--border);
+      background: var(--panel);
+      padding: 18px;
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+
+    main {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      max-height: 100vh;
+    }
+
+    h1, h2, h3 { margin: 0 0 12px; }
+    h1 { font-size: 24px; }
+    h2 { font-size: 16px; color: var(--accent); margin-top: 22px; }
+    h3 { font-size: 14px; color: var(--muted); }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+      margin: 12px 0 6px;
+    }
+
+    input, textarea, select, button {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 120px;
+      line-height: 1.45;
+    }
+
+    button {
+      cursor: pointer;
+      background: linear-gradient(180deg, #2d3b49, #1f2933);
+      font-weight: 700;
+      margin-top: 10px;
+    }
+
+    button:hover { border-color: var(--accent); }
+    button.secondary { background: var(--panel-2); font-weight: 600; }
+    button.danger { border-color: #614048; color: #ffd6d6; }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tiny { font-size: 12px; color: var(--muted); line-height: 1.4; }
+    .status { color: var(--accent); font-size: 13px; min-height: 20px; margin-top: 8px; }
+
+    .book-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .book {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      background: #121821;
+    }
+
+    .book.active { border-color: var(--accent); }
+    .book-title { font-weight: 700; margin-bottom: 4px; }
+    .book-meta { font-size: 12px; color: var(--muted); }
+    .book-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .book-actions button { margin-top: 8px; padding: 7px; font-size: 12px; }
+
+    .toolbar {
+      border-bottom: 1px solid var(--border);
+      background: #121821;
+      padding: 12px 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: end;
+    }
+
+    .controls button {
+      width: auto;
+      margin: 0;
+      padding: 9px 14px;
+    }
+
+    .reader-wrap {
+      position: relative;
+      overflow: hidden;
+      padding: 24px;
+    }
+
+    .reader {
+      height: 100%;
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      background: var(--paper);
+      color: var(--paper-text);
+      overflow: auto;
+      position: relative;
+      box-shadow: 0 24px 80px rgba(0,0,0,.25);
+    }
+
+    .page {
+      max-width: 850px;
+      margin: 0 auto;
+      padding: 54px 64px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 21px;
+      line-height: 1.75;
+      white-space: pre-wrap;
+    }
+
+    .rsvp {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px;
+      font-size: clamp(36px, 7vw, 86px);
+      font-weight: 800;
+      letter-spacing: .02em;
+      line-height: 1.25;
+      font-family: system-ui, sans-serif;
+    }
+
+    .overlay-cover {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 0;
+      background: rgba(248,246,239,.96);
+      border-bottom: 4px solid var(--accent);
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    .line-mask {
+      position: absolute;
+      inset: 0;
+      background: var(--paper);
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .line-window {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 44px;
+      border-top: 3px solid var(--accent);
+      border-bottom: 3px solid var(--accent);
+      background: rgba(113, 214, 255, 0.08);
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .page.window-mode span[data-word-index] {
+      visibility: hidden;
+    }
+
+    .page.window-mode span.current-line {
+      visibility: visible;
+    }
+
+    .progress-bar {
+      height: 8px;
+      background: #303b47;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width .2s linear;
+    }
+
+    .jump-panel, .session-log {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #121821;
+      padding: 10px;
+      margin-top: 10px;
+    }
+
+    .jump-panel button { padding: 8px; font-size: 12px; }
+    .jump-panel .row { margin-bottom: 8px; }
+
+    .session-item {
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .session-item:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
+    .session-item strong { color: var(--text); }
+    .session-item button { padding: 7px; font-size: 12px; margin-top: 6px; }
+
+    .empty {
+      height: 100%;
+      display: grid;
+      place-items: center;
+      color: #4b5563;
+      text-align: center;
+      padding: 30px;
+      font-family: system-ui, sans-serif;
+    }
+
+    @media (max-width: 900px) {
+      body { grid-template-columns: 1fr; }
+      aside { max-height: none; border-right: 0; border-bottom: 1px solid var(--border); }
+      main { max-height: none; min-height: 70vh; }
+      .toolbar { grid-template-columns: 1fr; }
+      .controls { justify-content: start; }
+      .page { padding: 34px 26px; font-size: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <aside>
+    <h1>PDF Speed Reader</h1>
+    <p class="tiny">Load a PDF or paste text, save it as a book, then read it using one of three speed-reading modes.</p>
+
+    <h2>Add a book</h2>
+    <label for="bookTitle">Book title</label>
+    <input id="bookTitle" placeholder="Example: Chapter 1" />
+
+    <label for="pdfInput">Load PDF</label>
+    <input id="pdfInput" type="file" accept="application/pdf" />
+
+    <label for="pasteText">Or paste text</label>
+    <textarea id="pasteText" placeholder="Paste text here..."></textarea>
+    <button id="saveTextBtn">Save pasted text as book</button>
+    <div id="status" class="status"></div>
+
+    <h2>Settings</h2>
+    <label for="mode">Reading mode</label>
+    <select id="mode">
+      <option value="rsvp">Words at a time</option>
+      <option value="cover">Page cover-down</option>
+      <option value="window">Falling line window</option>
+    </select>
+
+    <div class="row">
+      <div>
+        <label for="wpm">Words per minute</label>
+        <input id="wpm" type="number" min="50" max="3000" value="350" />
+      </div>
+      <div>
+        <label for="chunkSize">Words shown</label>
+        <input id="chunkSize" type="number" min="1" max="20" value="3" />
+      </div>
+    </div>
+
+    <label for="fontSize">Page font size</label>
+    <input id="fontSize" type="range" min="14" max="34" value="21" />
+
+    <label for="lineHeight">Line spacing</label>
+    <input id="lineHeight" type="range" min="1.2" max="2.3" value="1.75" step="0.05" />
+
+    <button id="resetProgressBtn" class="secondary">Reset current book progress</button>
+
+    <h2>Go to / start from</h2>
+    <div class="jump-panel">
+      <div class="row">
+        <div>
+          <label for="jumpPage">Page</label>
+          <input id="jumpPage" type="number" min="1" value="1" />
+        </div>
+        <div>
+          <label for="jumpWord">Word #</label>
+          <input id="jumpWord" type="number" min="0" value="0" />
+        </div>
+      </div>
+      <button id="jumpPageBtn" class="secondary">Go to page</button>
+      <button id="jumpWordBtn" class="secondary">Go to word</button>
+      <button id="useViewBtn" class="secondary">Use current view as start</button>
+    </div>
+
+    <h2>Session log</h2>
+    <div id="sessionLog" class="session-log tiny">No sessions yet.</div>
+
+    <h2>Saved books</h2>
+    <div id="bookList" class="book-list"></div>
+  </aside>
+
+  <main>
+    <div class="toolbar">
+      <div>
+        <h3 id="currentTitle">No book selected</h3>
+        <div class="tiny" id="progressText">Add or select a book to begin.</div>
+        <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+      </div>
+      <div class="controls">
+        <button id="backBtn">Back</button>
+        <button id="playBtn">Play</button>
+        <button id="pauseBtn">Pause</button>
+        <button id="forwardBtn">Forward</button>
+      </div>
+    </div>
+
+    <div class="reader-wrap">
+      <div id="reader" class="reader">
+        <div class="empty">No book selected yet.</div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    const DB_NAME = "pdfSpeedReaderDB.v2";
+    const DB_STORE = "books";
+    const PROGRESS_KEY = "pdfSpeedReaderProgress.v1";
+    const CURRENT_BOOK_KEY = "pdfSpeedReaderCurrentBook.v1";
+    const $ = (id) => document.getElementById(id);
+
+    const state = {
+      books: [],
+      currentId: null,
+      playing: false,
+      timer: null,
+      animationId: null,
+      modeStartedAt: 0,
+      coverStartIndex: 0,
+      pageLines: [],
+      wordPositions: []
+    };
+
+    const els = {
+      bookTitle: $("bookTitle"),
+      pdfInput: $("pdfInput"),
+      pasteText: $("pasteText"),
+      saveTextBtn: $("saveTextBtn"),
+      status: $("status"),
+      mode: $("mode"),
+      wpm: $("wpm"),
+      chunkSize: $("chunkSize"),
+      fontSize: $("fontSize"),
+      lineHeight: $("lineHeight"),
+      resetProgressBtn: $("resetProgressBtn"),
+      jumpPage: $("jumpPage"),
+      jumpWord: $("jumpWord"),
+      jumpPageBtn: $("jumpPageBtn"),
+      jumpWordBtn: $("jumpWordBtn"),
+      useViewBtn: $("useViewBtn"),
+      sessionLog: $("sessionLog"),
+      bookList: $("bookList"),
+      currentTitle: $("currentTitle"),
+      progressText: $("progressText"),
+      progressFill: $("progressFill"),
+      reader: $("reader"),
+      backBtn: $("backBtn"),
+      playBtn: $("playBtn"),
+      pauseBtn: $("pauseBtn"),
+      forwardBtn: $("forwardBtn")
+    };
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(DB_STORE)) {
+            db.createObjectStore(DB_STORE, { keyPath: "id" });
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function loadBooks() {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, "readonly");
+        const store = tx.objectStore(DB_STORE);
+        const request = store.getAll();
+        request.onsuccess = () => {
+          const books = (request.result || []).map(normalizeBook);
+          books.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          resolve(books);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function saveBook(book) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, "readwrite");
+        tx.objectStore(DB_STORE).put(book);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function deleteBookFromDB(id) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, "readwrite");
+        tx.objectStore(DB_STORE).delete(id);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function saveBooks() {
+      for (const book of state.books) await saveBook(book);
+    }
+
+    function loadProgressSnapshots() {
+      try { return JSON.parse(localStorage.getItem(PROGRESS_KEY) || "{}"); }
+      catch { return {}; }
+    }
+
+    function saveProgressSnapshot(book) {
+      if (!book) return;
+      try {
+        const snapshots = loadProgressSnapshots();
+        snapshots[book.id] = { index: book.index, updatedAt: new Date().toISOString() };
+        localStorage.setItem(PROGRESS_KEY, JSON.stringify(snapshots));
+        localStorage.setItem(CURRENT_BOOK_KEY, book.id);
+      } catch (err) {
+        console.warn("Progress snapshot could not be saved", err);
+      }
+    }
+
+    function applyProgressSnapshots(books) {
+      const snapshots = loadProgressSnapshots();
+      for (const book of books) {
+        const snapshot = snapshots[book.id];
+        if (snapshot && Number.isFinite(Number(snapshot.index))) {
+          book.index = Math.max(0, Math.min(book.words.length, Number(snapshot.index)));
+        }
+      }
+    }
+
+    function clampBookIndex(book) {
+      if (!book) return;
+      const index = Number(book.index);
+      book.index = Number.isFinite(index) ? Math.max(0, Math.min(book.words.length, Math.round(index))) : 0;
+    }
+
+    function refreshBookIndexFromSnapshot(book) {
+      if (!book) return;
+      const snapshots = loadProgressSnapshots();
+      const snapshot = snapshots[book.id];
+      if (snapshot && Number.isFinite(Number(snapshot.index))) {
+        const snapIndex = Math.max(0, Math.min(book.words.length, Math.round(Number(snapshot.index))));
+        if (snapIndex > Number(book.index || 0)) book.index = snapIndex;
+      }
+      clampBookIndex(book);
+    }
+
+    function rememberCurrentBookId() {
+      const book = getCurrentBook();
+      if (!book) return;
+      try { localStorage.setItem(CURRENT_BOOK_KEY, book.id); } catch {}
+    }
+
+    function wordsOf(text) {
+      return text.trim().split(/\s+/).filter(Boolean);
+    }
+
+    function getCurrentBook() {
+      const book = state.books.find(b => b.id === state.currentId) || null;
+      if (book) clampBookIndex(book);
+      return book;
+    }
+
+    function clampSettings() {
+      els.wpm.value = Math.max(50, Math.min(3000, Number(els.wpm.value) || 350));
+      els.chunkSize.value = Math.max(1, Math.min(20, Number(els.chunkSize.value) || 1));
+    }
+
+    async function addBook(title, text, source) {
+      const cleanText = text.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+      if (!cleanText) {
+        setStatus("No readable text found.");
+        return;
+      }
+      const book = {
+        id: crypto.randomUUID(),
+        title: title || `Book ${state.books.length + 1}`,
+        source,
+        text: cleanText,
+        words: wordsOf(cleanText),
+        index: 0,
+        sessions: [],
+        activeSession: null,
+        createdAt: new Date().toISOString()
+      };
+      state.books.unshift(book);
+      state.currentId = book.id;
+      saveProgressSnapshot(book);
+      try {
+        await saveBook(book);
+        renderBookList();
+        renderReader();
+        setStatus(`Saved: ${book.title}`);
+      } catch (err) {
+        console.error(err);
+        setStatus("Could not save this book. Your browser may be blocking local storage.");
+      }
+    }
+
+    function setStatus(message) {
+      els.status.textContent = message;
+      if (message) setTimeout(() => { if (els.status.textContent === message) els.status.textContent = ""; }, 4500);
+    }
+
+    async function extractPdfText(file) {
+      setStatus("Reading PDF text...");
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let text = "";
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const content = await page.getTextContent();
+        const strings = content.items.map(item => item.str).join(" ");
+        text += `\n\n--- Page ${pageNum} ---\n\n${strings}`;
+        setStatus(`Reading PDF page ${pageNum} of ${pdf.numPages}...`);
+      }
+      return text;
+    }
+
+    els.pdfInput.addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        const title = els.bookTitle.value.trim() || file.name.replace(/\.pdf$/i, "");
+        const text = await extractPdfText(file);
+        await addBook(title, text, "PDF");
+        els.pdfInput.value = "";
+      } catch (err) {
+        console.error(err);
+        setStatus("Could not read that PDF. Try another PDF or paste the text.");
+      }
+    });
+
+    els.saveTextBtn.addEventListener("click", async () => {
+      await addBook(els.bookTitle.value.trim(), els.pasteText.value, "Pasted text");
+      els.pasteText.value = "";
+      els.bookTitle.value = "";
+    });
+
+    function renderBookList() {
+      els.bookList.innerHTML = "";
+      if (!state.books.length) {
+        els.bookList.innerHTML = '<div class="tiny">No saved books yet.</div>';
+        return;
+      }
+      for (const book of state.books) {
+        const div = document.createElement("div");
+        div.className = `book ${book.id === state.currentId ? "active" : ""}`;
+        const pct = book.words.length ? Math.round((book.index / book.words.length) * 100) : 0;
+        div.innerHTML = `
+          <div class="book-title"></div>
+          <div class="book-meta">${book.source} · ${book.words.length.toLocaleString()} words · ${pct}% read</div>
+          <div class="book-actions">
+            <button class="select-book">Open</button>
+            <button class="delete-book danger">Delete</button>
+          </div>
+        `;
+        div.querySelector(".book-title").textContent = book.title;
+        div.querySelector(".select-book").onclick = () => {
+          pause();
+          state.currentId = book.id;
+          try { localStorage.setItem(CURRENT_BOOK_KEY, book.id); } catch {}
+          renderBookList();
+          renderReader();
+        };
+        div.querySelector(".delete-book").onclick = async () => {
+          if (!confirm(`Delete "${book.title}"?`)) return;
+          pause();
+          state.books = state.books.filter(b => b.id !== book.id);
+          await deleteBookFromDB(book.id);
+          if (state.currentId === book.id) state.currentId = state.books[0]?.id || null;
+          renderBookList();
+          renderReader();
+        };
+        els.bookList.appendChild(div);
+      }
+    }
+
+    function renderReader() {
+      const book = getCurrentBook();
+      refreshBookIndexFromSnapshot(book);
+      clearVisualTimers();
+      if (!book) {
+        els.reader.innerHTML = '<div class="empty">No book selected yet.</div>';
+        els.currentTitle.textContent = "No book selected";
+        els.progressText.textContent = "Add or select a book to begin.";
+        els.progressFill.style.width = "0%";
+        return;
+      }
+
+      normalizeBook(book);
+      const mode = els.mode.value;
+      els.currentTitle.textContent = book.title;
+      updateProgress();
+      renderSessionLog();
+
+      if (mode === "rsvp") {
+        renderRsvpChunk();
+      } else {
+        els.reader.innerHTML = `<div id="page" class="page"></div>`;
+        const page = $("page");
+        page.style.fontSize = `${els.fontSize.value}px`;
+        page.style.lineHeight = els.lineHeight.value;
+        buildIndexedPage(page, book.text);
+        scrollCurrentWordIntoView();
+        setTimeout(() => scrollCurrentWordIntoView(), 0);
+      }
+    }
+
+    function renderRsvpChunk() {
+      const book = getCurrentBook();
+      if (!book) return;
+      const chunk = Number(els.chunkSize.value);
+      const text = book.words.slice(book.index, book.index + chunk).join(" ") || "Done";
+      els.reader.innerHTML = `<div class="rsvp"></div>`;
+      els.reader.querySelector(".rsvp").textContent = text;
+      updateProgress();
+    }
+
+    function updateProgress() {
+      const book = getCurrentBook();
+      if (!book) return;
+      const pct = book.words.length ? Math.min(100, (book.index / book.words.length) * 100) : 0;
+      els.progressFill.style.width = `${pct}%`;
+      const page = pageNumberForIndex(book);
+      const totalPages = getPageStarts(book).length;
+      els.progressText.textContent = `${Math.min(book.index, book.words.length).toLocaleString()} / ${book.words.length.toLocaleString()} words · ${Math.round(pct)}% · page ${page} of ${totalPages}`;
+      if (els.jumpWord) els.jumpWord.value = Math.min(book.index, book.words.length);
+      if (els.jumpPage) els.jumpPage.value = page;
+    }
+
+    function saveCurrentProgress() {
+      const book = getCurrentBook();
+      if (!book) return;
+      clampBookIndex(book);
+      saveProgressSnapshot(book);
+      rememberCurrentBookId();
+      saveBook(book).catch(err => {
+        console.error(err);
+        setStatus("Progress could not be saved.");
+      });
+      renderBookList();
+      updateProgress();
+      renderSessionLog();
+    }
+
+    function wordDelayMs() {
+      clampSettings();
+      return 60000 / Number(els.wpm.value);
+    }
+
+    function chunkDelayMs() {
+      return wordDelayMs() * Number(els.chunkSize.value);
+    }
+
+    function play() {
+      const book = getCurrentBook();
+      if (!book || state.playing) return;
+      refreshBookIndexFromSnapshot(book);
+      clampSettings();
+      state.playing = true;
+      if (els.mode.value === "rsvp") playRsvp();
+      if (els.mode.value === "cover") playCover();
+      if (els.mode.value === "window") playWindow();
+    }
+
+    function pause() {
+      const wasPlaying = state.playing;
+      state.playing = false;
+      clearVisualTimers();
+      if (wasPlaying) finishSession("paused");
+      else saveCurrentProgress();
+    }
+
+    function clearVisualTimers() {
+      if (state.timer) clearTimeout(state.timer);
+      if (state.animationId) cancelAnimationFrame(state.animationId);
+      state.timer = null;
+      state.animationId = null;
+      const cover = els.reader.querySelector(".overlay-cover");
+      const mask = els.reader.querySelector(".line-mask");
+      const win = els.reader.querySelector(".line-window");
+      const page = $("page");
+      if (page) page.querySelectorAll(".current-line").forEach(span => span.classList.remove("current-line"));
+      if (cover) cover.remove();
+      if (mask) mask.remove();
+      if (win) win.remove();
+    }
+
+    function playRsvp() {
+      const book = getCurrentBook();
+      if (!book || !state.playing) return;
+      if (book.index >= book.words.length) return pause();
+      renderRsvpChunk();
+      book.index += Number(els.chunkSize.value);
+      saveCurrentProgress();
+      state.timer = setTimeout(playRsvp, chunkDelayMs());
+    }
+
+    function estimateVisibleWords() {
+      const page = $("page");
+      if (!page) return 0;
+      const visibleRatio = els.reader.clientHeight / Math.max(1, page.scrollHeight);
+      return Math.max(1, Math.round(getCurrentBook().words.length * visibleRatio));
+    }
+
+    function playCover() {
+      const book = getCurrentBook();
+      if (!book) return;
+      renderReader();
+      requestAnimationFrame(() => {
+        scrollCurrentWordIntoView();
+        requestAnimationFrame(startCoverAnimation);
+      });
+    }
+
+    function startCoverAnimation() {
+      const book = getCurrentBook();
+      if (!book || !state.playing) return;
+      const cover = document.createElement("div");
+      cover.className = "overlay-cover";
+      els.reader.appendChild(cover);
+
+      const startIndex = book.index;
+      const visibleWords = estimateVisibleWords();
+      const duration = Math.max(250, visibleWords * wordDelayMs());
+      const startTime = performance.now();
+      const maxHeight = els.reader.clientHeight;
+
+      function frame(now) {
+        if (!state.playing) return;
+        const elapsed = now - startTime;
+        const progress = Math.min(1, elapsed / duration);
+        cover.style.height = `${progress * maxHeight}px`;
+        book.index = Math.min(book.words.length, Math.round(startIndex + visibleWords * progress));
+        updateProgress();
+        saveProgressSnapshot(book);
+        if (progress < 1) {
+          state.animationId = requestAnimationFrame(frame);
+        } else {
+          saveCurrentProgress();
+          if (book.index >= book.words.length || els.reader.scrollTop + els.reader.clientHeight >= els.reader.scrollHeight - 10) {
+            pause();
+          } else {
+            playCover();
+          }
+        }
+      }
+      state.animationId = requestAnimationFrame(frame);
+    }
+
+    function buildIndexedPage(page, text) {
+      page.innerHTML = "";
+      const tokens = text.split(/(\s+)/);
+      let wordCount = 0;
+      for (const token of tokens) {
+        if (/\s+/.test(token)) {
+          page.appendChild(document.createTextNode(token));
+        } else if (token) {
+          const span = document.createElement("span");
+          span.textContent = token;
+          span.dataset.wordIndex = wordCount++;
+          page.appendChild(span);
+        }
+      }
+    }
+
+    function collectLinePositions() {
+      const page = $("page");
+      const positions = Array.from(page.querySelectorAll("span[data-word-index]"));
+      const lines = [];
+      for (const span of positions) {
+        const rect = span.getBoundingClientRect();
+        const readerRect = els.reader.getBoundingClientRect();
+        const y = rect.top - readerRect.top + els.reader.scrollTop;
+        const existing = lines.find(l => Math.abs(l.y - y) < 8);
+        if (existing) {
+          existing.end = Number(span.dataset.wordIndex) + 1;
+          existing.height = Math.max(existing.height, rect.height);
+          existing.spans.push(span);
+        } else {
+          lines.push({ y, start: Number(span.dataset.wordIndex), end: Number(span.dataset.wordIndex) + 1, height: rect.height, spans: [span] });
+        }
+      }
+      return lines;
+    }
+
+    function playWindow() {
+      const book = getCurrentBook();
+      if (!book) return;
+      refreshBookIndexFromSnapshot(book);
+      renderReader();
+      scrollCurrentWordIntoView();
+      requestAnimationFrame(() => {
+        if (!state.playing) return;
+        scrollCurrentWordIntoView();
+        const lines = collectLinePositions();
+        const page = $("page");
+        if (page) page.classList.add("window-mode");
+        if (!lines.length) return pause();
+        const currentLineIndex = Math.max(0, lines.findIndex(l => l.end > book.index));
+        runWindowLine(lines, currentLineIndex === -1 ? lines.length - 1 : currentLineIndex);
+      });
+    }
+
+    function runWindowLine(lines, lineIndex) {
+      const book = getCurrentBook();
+      if (!state.playing || !book || lineIndex >= lines.length) return pause();
+      const line = lines[lineIndex];
+      const page = $("page");
+      if (page) {
+        page.querySelectorAll(".current-line").forEach(span => span.classList.remove("current-line"));
+      }
+      line.spans.forEach(span => span.classList.add("current-line"));
+      const wordsOnLine = Math.max(1, line.end - line.start);
+      const duration = wordsOnLine * wordDelayMs();
+
+      els.reader.scrollTo({ top: Math.max(0, line.y - els.reader.clientHeight * 0.25), behavior: "instant" });
+      let win = els.reader.querySelector(".line-window");
+      if (!win) {
+        win = document.createElement("div");
+        win.className = "line-window";
+        els.reader.appendChild(win);
+      }
+      win.style.top = `${line.y - els.reader.scrollTop - 4}px`;
+      win.style.height = `${line.height + 10}px`;
+
+      const startTime = performance.now();
+      function frame(now) {
+        if (!state.playing) return;
+        const progress = Math.min(1, (now - startTime) / duration);
+        book.index = Math.min(book.words.length, Math.round(line.start + wordsOnLine * progress));
+        updateProgress();
+        saveProgressSnapshot(book);
+        if (progress < 1) {
+          state.animationId = requestAnimationFrame(frame);
+        } else {
+          book.index = line.end;
+          saveCurrentProgress();
+          runWindowLine(lines, lineIndex + 1);
+        }
+      }
+      state.animationId = requestAnimationFrame(frame);
+    }
+
+    function scrollCurrentWordIntoView() {
+      const book = getCurrentBook();
+      if (!book || els.mode.value === "rsvp") return;
+      const page = $("page");
+      if (!page) return;
+      const spans = page.querySelectorAll("span[data-word-index]");
+      if (!spans.length) return;
+      const targetIndex = Math.max(0, Math.min(book.words.length - 1, book.index));
+      let target = page.querySelector(`span[data-word-index="${targetIndex}"]`);
+      if (!target) {
+        target = Array.from(spans).find(span => Number(span.dataset.wordIndex) >= targetIndex) || spans[spans.length - 1];
+      }
+      const readerRect = els.reader.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const targetTop = targetRect.top - readerRect.top + els.reader.scrollTop;
+      els.reader.scrollTop = Math.max(0, targetTop - els.reader.clientHeight * 0.25);
+    }
+
+    function stepWords(amount) {
+      const book = getCurrentBook();
+      if (!book) return;
+      pause();
+      book.index = Math.max(0, Math.min(book.words.length, book.index + amount));
+      saveCurrentProgress();
+      renderReader();
+    }
+
+    els.playBtn.addEventListener("click", play);
+    els.pauseBtn.addEventListener("click", pause);
+    els.backBtn.addEventListener("click", () => stepWords(-Math.max(20, Number(els.wpm.value) / 5)));
+    els.forwardBtn.addEventListener("click", () => stepWords(Math.max(20, Number(els.wpm.value) / 5)));
+
+    els.mode.addEventListener("change", () => {
+      const book = getCurrentBook();
+      const keepIndex = book ? book.index : 0;
+      state.playing = false;
+      clearVisualTimers();
+      if (book) {
+        book.index = keepIndex;
+        saveCurrentProgress();
+      }
+      renderReader();
+    });
+    els.fontSize.addEventListener("input", renderReader);
+    els.lineHeight.addEventListener("input", renderReader);
+    els.wpm.addEventListener("change", clampSettings);
+    els.chunkSize.addEventListener("change", clampSettings);
+
+    els.resetProgressBtn.addEventListener("click", () => {
+      const book = getCurrentBook();
+      if (!book) return;
+      pause();
+      book.index = 0;
+      saveCurrentProgress();
+      renderReader();
+    });
+
+    async function init() {
+      try {
+        state.books = await loadBooks();
+        applyProgressSnapshots(state.books);
+        state.books.forEach(normalizeBook);
+      } catch (err) {
+        console.error(err);
+        setStatus("Could not open the local book database. Try using Chrome or Edge.");
+        state.books = [];
+      }
+      const savedCurrentId = (() => { try { return localStorage.getItem(CURRENT_BOOK_KEY); } catch { return null; } })();
+      if (savedCurrentId && state.books.some(b => b.id === savedCurrentId)) {
+        state.currentId = savedCurrentId;
+      } else if (state.books[0]) {
+        state.currentId = state.books[0].id;
+      }
+      renderBookList();
+      renderReader();
+    }
+
+    window.addEventListener("beforeunload", () => {
+      const book = getCurrentBook();
+      saveProgressSnapshot(book);
+      if (book) saveBook(book).catch(() => {});
+    });
+
+    window.addEventListener("pagehide", () => {
+      const book = getCurrentBook();
+      saveProgressSnapshot(book);
+      if (book) saveBook(book).catch(() => {});
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") saveProgressSnapshot(getCurrentBook());
+    });
+
+    init();
+  </script>
+</body>
+</html>
