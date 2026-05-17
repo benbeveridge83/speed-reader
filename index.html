@@ -29,6 +29,7 @@ button { cursor:pointer; font-weight:700; background:linear-gradient(180deg,#2d3
 .reader { height:100%; border:1px solid var(--border); border-radius:22px; background:var(--paper); color:var(--ink); overflow:auto; position:relative; box-shadow:0 24px 80px rgba(0,0,0,.25); }
 .page { max-width:900px; margin:0 auto; padding:54px 64px; font-family:Georgia,'Times New Roman',serif; font-size:22px; line-height:1.75; white-space:pre-wrap; }
 .page span.current-word { background:rgba(113,214,255,.45); border-radius:4px; }
+.page-marker{font-family:system-ui,sans-serif;color:#64748b;font-size:14px;margin:0 0 18px;border-bottom:1px solid rgba(100,116,139,.25);padding-bottom:6px;}
 .rsvp { height:100%; display:flex; align-items:center; justify-content:center; text-align:center; padding:40px; font-size:clamp(36px,7vw,86px); font-weight:800; line-height:1.25; }
 .cover { position:absolute; top:0; left:0; right:0; height:0; background:rgba(248,246,239,.96); border-bottom:4px solid var(--accent); pointer-events:none; z-index:2; }
 .page.window-mode span[data-word-index] { visibility:hidden; } .page.window-mode span.current-line { visibility:visible; }
@@ -82,14 +83,91 @@ function renderLog(){ const log=(load().log||[]); els.log.innerHTML=log.length?'
 function clearTimers(){ if(state.timer) clearTimeout(state.timer); if(state.raf) cancelAnimationFrame(state.raf); state.timer=null; state.raf=null; const cover=els.reader.querySelector('.cover'); if(cover)cover.remove(); const win=els.reader.querySelector('.line-window'); if(win)win.remove(); const page=$('page'); if(page){page.classList.remove('window-mode'); page.querySelectorAll('.current-line,.current-word').forEach(s=>s.classList.remove('current-line','current-word'));} }
 function render(){ clearTimers(); update(); if(els.mode.value==='rsvp') renderRsvp(); else renderPage(); }
 function renderRsvp(){ const n=+els.chunk.value; els.reader.innerHTML='<div class="rsvp"></div>'; els.reader.querySelector('.rsvp').textContent=words.slice(state.index,state.index+n).join(' ')||'Done'; update(); }
-function buildPage(){ const page=document.createElement('div'); page.id='page'; page.className='page'; page.style.fontSize=els.font.value+'px'; page.style.lineHeight=els.lh.value; const tokens=fullText.split(/(\s+)/); let wi=0; for(const tok of tokens){ if(/\s+/.test(tok)) page.appendChild(document.createTextNode(tok)); else if(tok){ const span=document.createElement('span'); span.textContent=tok; span.dataset.wordIndex=wi++; page.appendChild(span); } } return page; }
-function renderPage(){ els.reader.innerHTML=''; els.reader.appendChild(buildPage()); setTimeout(scrollToWord,0); update(); }
-function scrollToWord(){ const page=$('page'); if(!page)return; const targetIndex=Math.max(0,Math.min(words.length-1,state.index)); let target=page.querySelector(`span[data-word-index="${targetIndex}"]`)||page.querySelector('span[data-word-index]'); if(!target)return; page.querySelectorAll('.current-word').forEach(s=>s.classList.remove('current-word')); target.classList.add('current-word'); const rr=els.reader.getBoundingClientRect(), tr=target.getBoundingClientRect(); els.reader.scrollTop=Math.max(0,tr.top-rr.top+els.reader.scrollTop-els.reader.clientHeight*.25); }
+function buildPage(startIndex=state.index){
+  const page=document.createElement('div');
+  page.id='page';
+  page.className='page';
+  page.style.fontSize=els.font.value+'px';
+  page.style.lineHeight=els.lh.value;
+  const start=Math.max(0,Math.min(words.length-1,Math.round(Number(startIndex)||0)));
+  let lastPage=null;
+  for(let i=start;i<words.length;i++){
+    const pg=wordPage[i]||lastPage||1;
+    if(pg!==lastPage){
+      const marker=document.createElement('div');
+      marker.className='page-marker';
+      marker.textContent='PDF page '+pg;
+      page.appendChild(marker);
+      lastPage=pg;
+    }
+    const span=document.createElement('span');
+    span.textContent=words[i];
+    span.dataset.wordIndex=i;
+    if(i===start) span.classList.add('current-word');
+    page.appendChild(span);
+    page.appendChild(document.createTextNode(' '));
+  }
+  return page;
+}
+function renderPage(){
+  els.reader.innerHTML='';
+  els.reader.scrollTop=0;
+  els.reader.appendChild(buildPage(state.index));
+  update();
+}
+function scrollToWord(){
+  const page=$('page');
+  if(!page)return;
+  const targetIndex=Math.max(0,Math.min(words.length-1,state.index));
+  let target=page.querySelector(`span[data-word-index="${targetIndex}"]`)||page.querySelector('span[data-word-index]');
+  if(!target)return;
+  page.querySelectorAll('.current-word').forEach(s=>s.classList.remove('current-word'));
+  target.classList.add('current-word');
+  els.reader.scrollTop=0;
+}
 function play(){ if(state.playing) return; const d=load(); if(Number.isFinite(+d.index)) state.index=Math.max(0,Math.min(words.length,+d.index)); update(); state.playing=true; state.sessionStart=state.sessionStart||new Date().toISOString(); if(els.mode.value==='rsvp') playRsvp(); if(els.mode.value==='cover') playCover(); if(els.mode.value==='window') playWindow(); }
 function pause(log=true){ const was=state.playing; state.playing=false; save(); clearTimers(); if(log && was) addLog('pause'); update(); }
 function playRsvp(){ if(!state.playing)return; if(state.index>=words.length) return pause(); renderRsvp(); state.index=Math.min(words.length,state.index+(+els.chunk.value)); save(); state.timer=setTimeout(playRsvp,chunkDelay()); }
-function visibleWords(){ const p0=currentPage(); let n=0; for(const pg of wordPage) if(pg===p0)n++; return Math.max(50,Math.min(n,Math.round(words.length*els.reader.clientHeight/Math.max(1,els.reader.scrollHeight)))); }
-function playCover(){ const startIndex=state.index; renderPage(); state.index=startIndex; setTimeout(()=>{ if(!state.playing)return; state.index=startIndex; scrollToWord(); const cover=document.createElement('div'); cover.className='cover'; els.reader.appendChild(cover); const start=startIndex, vw=visibleWords(), dur=vw*wordDelay(), st=performance.now(), max=els.reader.clientHeight; function frame(now){ if(!state.playing)return; const prog=Math.min(1,(now-st)/dur); cover.style.height=(prog*max)+'px'; state.index=Math.min(words.length,Math.round(start+vw*prog)); update(); save(); if(prog<1) state.raf=requestAnimationFrame(frame); else { els.reader.scrollTop+=els.reader.clientHeight*.82; save(); if(state.index>=words.length) pause(); else playCover(); } } state.raf=requestAnimationFrame(frame); },40); }
+function visibleWords(){
+  const page=$('page');
+  if(!page) return 80;
+  const spans=[...page.querySelectorAll('span[data-word-index]')];
+  const rr=els.reader.getBoundingClientRect();
+  const visible=spans.filter(s=>{const r=s.getBoundingClientRect(); return r.top<rr.bottom && r.bottom>rr.top;}).length;
+  return Math.max(20, visible || 80);
+}
+function playCover(){
+  const startIndex=Math.max(0,Math.min(words.length,state.index));
+  renderPage();
+  state.index=startIndex;
+  setTimeout(()=>{
+    if(!state.playing)return;
+    state.index=startIndex;
+    scrollToWord();
+    const cover=document.createElement('div');
+    cover.className='cover';
+    cover.style.position='sticky';
+    cover.style.top='0';
+    cover.style.zIndex='3';
+    els.reader.prepend(cover);
+    const start=startIndex, vw=visibleWords(), dur=Math.max(250,vw*wordDelay()), st=performance.now(), max=els.reader.clientHeight;
+    function frame(now){
+      if(!state.playing)return;
+      const prog=Math.min(1,(now-st)/dur);
+      cover.style.height=(prog*max)+'px';
+      state.index=Math.min(words.length,Math.round(start+vw*prog));
+      update();
+      save();
+      if(prog<1) state.raf=requestAnimationFrame(frame);
+      else {
+        save();
+        if(state.index>=words.length) pause();
+        else playCover();
+      }
+    }
+    state.raf=requestAnimationFrame(frame);
+  },40);
+}
 function collectLines(){ const page=$('page'); const spans=[...page.querySelectorAll('span[data-word-index]')]; const lines=[]; for(const s of spans){ const r=s.getBoundingClientRect(), rr=els.reader.getBoundingClientRect(); const y=r.top-rr.top+els.reader.scrollTop; let line=lines.find(l=>Math.abs(l.y-y)<8); if(!line){line={y,start:+s.dataset.wordIndex,end:+s.dataset.wordIndex+1,height:r.height,spans:[]}; lines.push(line);} line.end=+s.dataset.wordIndex+1; line.height=Math.max(line.height,r.height); line.spans.push(s); } return lines; }
 function playWindow(){ const startIndex=state.index; renderPage(); state.index=startIndex; setTimeout(()=>{ if(!state.playing)return; state.index=startIndex; scrollToWord(); const page=$('page'); const lines=collectLines(); page.classList.add('window-mode'); let li=lines.findIndex(l=>l.end>state.index); if(li<0)li=0; runLine(lines,li); },60); }
 function runLine(lines,i){ if(!state.playing||i>=lines.length)return pause(); const line=lines[i], page=$('page'); page.querySelectorAll('.current-line').forEach(s=>s.classList.remove('current-line')); line.spans.forEach(s=>s.classList.add('current-line')); els.reader.scrollTop=Math.max(0,line.y-els.reader.clientHeight*.25); let win=els.reader.querySelector('.line-window'); if(!win){win=document.createElement('div');win.className='line-window';els.reader.appendChild(win);} win.style.top=(line.y-els.reader.scrollTop-4)+'px'; win.style.height=(line.height+10)+'px'; const start=line.start, n=Math.max(1,line.end-line.start), dur=n*wordDelay(), st=performance.now(); function frame(now){ if(!state.playing)return; const prog=Math.min(1,(now-st)/dur); state.index=Math.min(words.length,Math.round(start+n*prog)); update(); save(); if(prog<1) state.raf=requestAnimationFrame(frame); else { state.index=line.end; save(); runLine(lines,i+1); } } state.raf=requestAnimationFrame(frame); }
