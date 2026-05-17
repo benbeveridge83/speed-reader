@@ -61,14 +61,10 @@ const $=id=>document.getElementById(id);
 const els={reader:$('reader'),mode:$('mode'),wpm:$('wpm'),chunk:$('chunk'),font:$('font'),lh:$('lh'),fill:$('fill'),meta:$('meta'),chapterBadge:$('chapterBadge'),chapters:$('chapters'),log:$('log')};
 const state={playing:false,timer:null,raf:null,index:0,lines:[],sessionStart:null};
 const pages=BOOK.pages;
-const fullText=pages.map(p=>`[PDF page ${p.pdfPage}]
-`+p.text).join('
-
-');
+const fullText=pages.map(p => `[PDF page ${p.pdfPage}]\n${p.text}`).join('\n\n');
 const words=fullText.trim().split(/\s+/).filter(Boolean);
 const wordPage=[]; let count=0;
-for(const p of pages){ const n=('[PDF page '+p.pdfPage+']
-'+p.text).trim().split(/\s+/).filter(Boolean).length; for(let i=0;i<n;i++) wordPage[count++]=p.pdfPage; }
+for(const p of pages){ const n=(`[PDF page ${p.pdfPage}]\n${p.text}`).trim().split(/\s+/).filter(Boolean).length; for(let i=0;i<n;i++) wordPage[count++]=p.pdfPage; }
 for(const ch of BOOK.chapters){ ch.wordIndex = wordPage.findIndex(pg=>pg>=ch.pdfPage); if(ch.wordIndex<0) ch.wordIndex=0; }
 function load(){try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch{return {}}}
 function save(extra={}){ const d={...load(), index:state.index, updatedAt:new Date().toISOString(), ...extra}; localStorage.setItem(KEY,JSON.stringify(d)); }
