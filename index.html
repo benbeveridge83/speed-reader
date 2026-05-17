@@ -41,7 +41,7 @@ button { cursor:pointer; font-weight:700; background:linear-gradient(180deg,#2d3
 </head>
 <body>
 <aside>
-<h1>Walden</h1><div class="muted">Henry David Thoreau · chapter-aware speed reader</div>
+<h1>Walden v9</h1><div class="muted">Henry David Thoreau · chapter-aware speed reader · v9</div>
 <h2>Settings</h2>
 <label>Reading mode</label><select id="mode"><option value="rsvp">Words at a time</option><option value="cover">Page cover-down</option><option value="window">Falling line window</option></select>
 <div class="row"><div><label>Words per minute</label><input id="wpm" type="number" min="50" max="3000" value="350"></div><div><label>Words shown</label><input id="chunk" type="number" min="1" max="20" value="3"></div></div>
@@ -77,7 +77,7 @@ function clamp(){ els.wpm.value=Math.max(50,Math.min(3000,+els.wpm.value||350));
 function wordDelay(){clamp(); return 60000/+els.wpm.value;}
 function chunkDelay(){return wordDelay()*+els.chunk.value;}
 function update(){ const pct=Math.min(100,state.index/words.length*100); els.fill.style.width=pct+'%'; const ch=currentChapter(); els.chapterBadge.textContent=ch.title; els.meta.textContent=`PDF page ${currentPage()} / 165 · word ${state.index.toLocaleString()} / ${words.length.toLocaleString()} · ${Math.round(pct)}%`; highlightChapter(); }
-function renderChapters(){ els.chapters.innerHTML=''; BOOK.chapters.forEach(ch=>{ const b=document.createElement('button'); b.className='chapter'; b.textContent=`${ch.title} · p. ${ch.pdfPage}`; b.onclick=()=>{pause(false); state.index=ch.wordIndex; save(); render();}; els.chapters.appendChild(b); }); }
+function renderChapters(){ els.chapters.innerHTML=''; BOOK.chapters.forEach(ch=>{ const b=document.createElement('button'); b.className='chapter'; b.textContent=`${ch.title} · p. ${ch.pdfPage}`; b.onclick=()=>{state.playing=false; clearTimers(); state.index=ch.wordIndex; save(); render();}; els.chapters.appendChild(b); }); }
 function highlightChapter(){ const ch=currentChapter(); [...els.chapters.children].forEach((b,i)=>b.classList.toggle('active',BOOK.chapters[i]===ch)); }
 function renderLog(){ const log=(load().log||[]); els.log.innerHTML=log.length?'':'<div class="muted">No sessions yet.</div>'; log.forEach(item=>{ const div=document.createElement('div'); div.className='log-item'; const date=new Date(item.time).toLocaleString(); div.innerHTML=`<strong>${date}</strong><br><span class="muted">${item.chapter} · page ${item.page} · word ${item.index.toLocaleString()}</span><button>Resume here</button>`; div.querySelector('button').onclick=()=>{pause(false); state.index=item.index; save(); render();}; els.log.appendChild(div); }); }
 function clearTimers(){ if(state.timer) clearTimeout(state.timer); if(state.raf) cancelAnimationFrame(state.raf); state.timer=null; state.raf=null; const cover=els.reader.querySelector('.cover'); if(cover)cover.remove(); const win=els.reader.querySelector('.line-window'); if(win)win.remove(); const page=$('page'); if(page){page.classList.remove('window-mode'); page.querySelectorAll('.current-line,.current-word').forEach(s=>s.classList.remove('current-line','current-word'));} }
@@ -110,9 +110,13 @@ function buildPage(startIndex=state.index){
   return page;
 }
 function renderPage(){
+  // V9: always rebuild the visible page from the current saved word index.
+  // This prevents cover/window/page modes from showing PDF page 1 after a chapter jump.
+  const startIndex=Math.max(0,Math.min(words.length-1,Math.round(Number(state.index)||0)));
+  state.index=startIndex;
   els.reader.innerHTML='';
   els.reader.scrollTop=0;
-  els.reader.appendChild(buildPage(state.index));
+  els.reader.appendChild(buildPage(startIndex));
   update();
 }
 function scrollToWord(){
@@ -125,7 +129,18 @@ function scrollToWord(){
   target.classList.add('current-word');
   els.reader.scrollTop=0;
 }
-function play(){ if(state.playing) return; const d=load(); if(Number.isFinite(+d.index)) state.index=Math.max(0,Math.min(words.length,+d.index)); update(); state.playing=true; state.sessionStart=state.sessionStart||new Date().toISOString(); if(els.mode.value==='rsvp') playRsvp(); if(els.mode.value==='cover') playCover(); if(els.mode.value==='window') playWindow(); }
+function play(){
+  if(state.playing) return;
+  // V9: do not overwrite a chapter/page selection with an older saved value.
+  // The current on-screen state.index is the source of truth when Play is clicked.
+  save();
+  update();
+  state.playing=true;
+  state.sessionStart=state.sessionStart||new Date().toISOString();
+  if(els.mode.value==='rsvp') playRsvp();
+  if(els.mode.value==='cover') playCover();
+  if(els.mode.value==='window') playWindow();
+}
 function pause(log=true){ const was=state.playing; state.playing=false; save(); clearTimers(); if(log && was) addLog('pause'); update(); }
 function playRsvp(){ if(!state.playing)return; if(state.index>=words.length) return pause(); renderRsvp(); state.index=Math.min(words.length,state.index+(+els.chunk.value)); save(); state.timer=setTimeout(playRsvp,chunkDelay()); }
 function visibleWords(){
@@ -174,8 +189,8 @@ function runLine(lines,i){ if(!state.playing||i>=lines.length)return pause(); co
 $('play').onclick=play; $('pause').onclick=()=>pause(true); $('back').onclick=()=>{pause(false); state.index=Math.max(0,state.index-Math.max(20,Math.round(+els.wpm.value/5))); save(); render();}; $('forward').onclick=()=>{pause(false); state.index=Math.min(words.length,state.index+Math.max(20,Math.round(+els.wpm.value/5))); save(); render();};
 els.mode.onchange=()=>{pause(false); render();}; els.font.oninput=()=>render(); els.lh.oninput=()=>render(); els.wpm.onchange=clamp; els.chunk.onchange=clamp;
 $('reset').onclick=()=>{pause(false); state.index=0; save(); render();};
-$('goPage').onclick=()=>{pause(false); const input=$('pageJump'); const p=input ? +input.value : 1; const idx=wordPage.findIndex(pg=>pg>=p); if(idx>=0)state.index=idx; save(); render();};
-$('goWord').onclick=()=>{pause(false); const input=$('wordJump'); state.index=Math.max(0,Math.min(words.length,+(input ? input.value : 0)||0)); save(); render();};
+$('goPage').onclick=()=>{state.playing=false; clearTimers(); const input=$('pageJump'); const p=input ? +input.value : 1; const idx=wordPage.findIndex(pg=>pg>=p); if(idx>=0)state.index=idx; save(); render();};
+$('goWord').onclick=()=>{state.playing=false; clearTimers(); const input=$('wordJump'); state.index=Math.max(0,Math.min(words.length,+(input ? input.value : 0)||0)); save(); render();};
 $('useView').onclick=()=>{ const page=$('page'); if(!page)return; const rr=els.reader.getBoundingClientRect(); let best=null, bestDist=Infinity; page.querySelectorAll('span[data-word-index]').forEach(s=>{ const r=s.getBoundingClientRect(); const d=Math.abs(r.top-(rr.top+els.reader.clientHeight*.25)); if(d<bestDist){bestDist=d;best=s;} }); if(best){pause(false); state.index=+best.dataset.wordIndex; save(); render();} };
 window.addEventListener('beforeunload',()=>{addLog('closed');});
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') save(); });
