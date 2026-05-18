@@ -41,7 +41,7 @@ button { cursor:pointer; font-weight:700; background:linear-gradient(180deg,#2d3
 </head>
 <body>
 <aside>
-<h1>Walden v9</h1><div class="muted">Henry David Thoreau · chapter-aware speed reader · v9</div>
+<h1>Walden v10</h1><div class="muted">Henry David Thoreau · chapter-aware speed reader · v10</div>
 <h2>Settings</h2>
 <label>Reading mode</label><select id="mode"><option value="rsvp">Words at a time</option><option value="cover">Page cover-down</option><option value="window">Falling line window</option></select>
 <div class="row"><div><label>Words per minute</label><input id="wpm" type="number" min="50" max="3000" value="350"></div><div><label>Words shown</label><input id="chunk" type="number" min="1" max="20" value="3"></div></div>
@@ -161,10 +161,14 @@ function playCover(){
     scrollToWord();
     const cover=document.createElement('div');
     cover.className='cover';
-    cover.style.position='sticky';
+    // V10: the cover must be an overlay, not a sticky/prepended element.
+    // Sticky elements participate in layout, which pushed the text down instead of covering it.
+    cover.style.position='absolute';
     cover.style.top='0';
+    cover.style.left='0';
+    cover.style.right='0';
     cover.style.zIndex='3';
-    els.reader.prepend(cover);
+    els.reader.appendChild(cover);
     const start=startIndex, vw=visibleWords(), dur=Math.max(250,vw*wordDelay()), st=performance.now(), max=els.reader.clientHeight;
     function frame(now){
       if(!state.playing)return;
